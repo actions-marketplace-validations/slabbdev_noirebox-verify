@@ -1,0 +1,41 @@
+name: 'NoireBox Verify'
+description: 'Verify a NoireBox export journal in CI — the job fails if the chain was tampered with.'
+branding:
+  icon: 'shield'
+  color: 'red'
+inputs:
+  export-path:
+    description: 'Path to the NoireBox export file (JSON) to verify'
+    required: true
+  noirebox-ref:
+    description: 'NoireBox git ref the verifier is installed from (tag, branch or SHA)'
+    required: false
+    default: 'main'
+outputs:
+  result:
+    description: 'INTACT or TAMPERING'
+    value: ${{ steps.verify.outputs.result }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Fetch the verifier
+      shell: bash
+      run: |
+        git clone --depth 1 --branch "${{ inputs.noirebox-ref }}" \
+          https://github.com/slabbdev/noirebox.git "$RUNNER_TEMP/noirebox"
+    - name: Install the runtime dependency (verifier needs cryptography only)
+      shell: bash
+      run: pip install --quiet cryptography
+    - name: Verify the export
+      id: verify
+      shell: bash
+      env:
+        PYTHONPATH: ${{ runner.temp }}/noirebox
+      run: |
+        if python "$RUNNER_TEMP/noirebox/verifier/verifier.py" "${{ inputs.export-path }}"; then
+          echo "result=INTACT" >> "$GITHUB_OUTPUT"
+        else
+          echo "result=TAMPERING" >> "$GITHUB_OUTPUT"
+          echo "::error::NoireBox — tampering detected in ${{ inputs.export-path }} (see verifier output above)"
+          exit 1
+        fi
